@@ -71,6 +71,22 @@ body {
   display: none;
 }
 
+.lyric-romaji {
+  margin-top: 4px;
+  color: var(--kashi-secondary, #fff);
+  font-size: calc(14px * var(--kashi-text-scale, 1));
+  line-height: 1.25;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  opacity: 0.75;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  overflow-wrap: break-word;
+}
+
+.lyric-romaji[hidden] {
+  display: none;
+}
+
 .lyric {
   color: var(--kashi-text, #fff);
   /* The shipped size times the user's text-size preset (Faz 7 P3). The

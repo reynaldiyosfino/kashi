@@ -19,7 +19,22 @@ import { app, BrowserWindow, ipcMain, net, screen } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { release } from 'node:os';
 import { join } from 'node:path';
-import type { ExtensionToOverlayMessage, TrackInfo } from '@kashi/protocol';
+import type {
+  ExtensionToOverlayMessage,
+  PositionMessage,
+  TrackChangedMessage,
+  TrackInfo,
+} from '@kashi/protocol';
+import { BeefwebClient, mergeFoobarCandidates } from './beefweb.js';
+import {
+  candidateToTrack,
+  pickWinner,
+  type PlayerCandidate,
+  type PlayerKind,
+  type SourceMode,
+} from './player-mux-logic.js';
+import { romanizeLines } from './romanize-logic.js';
+import { SmtcWatcher } from './smtc-watch.js';
 import {
   DEFAULT_EFFECT_LEVEL,
   DEFAULT_FILL_STYLE,
@@ -166,6 +181,15 @@ let lastIsPlaying = false;
 const latch = emptyLatch();
 let debounceTimer: NodeJS.Timeout | null = null;
 const replay = new ReplayStore();
+const EXTERNAL_CLIENT_ID = 900001;
+const EXTERNAL_TAB_ID = 0;
+let ytmLive: PlayerCandidate | null = null;
+let smtcSessions: PlayerCandidate[] = [];
+let beefwebLive: PlayerCandidate | null = null;
+let muxWinnerKind: PlayerKind | 'none' = 'none';
+let smtcWatcher: SmtcWatcher | null = null;
+let beefwebClient: BeefwebClient | null = null;
+let extConnected = 0;
 /** Constructed in whenReady, once settings decide server vs serverless mode. */
 let lookups: LookupOrchestrator;
 
@@ -222,11 +246,138 @@ function settleDuration(
   };
 }
 
+function currentSourceMode(): SourceMode {
+  return settings?.get().source_mode ?? 'auto';
+}
+
+function mergedSessions(): PlayerCandidate[] {
+  return mergeFoobarCandidates(smtcSessions, beefwebLive, Date.now());
+}
+
+function broadcastConnection(): void {
+  send('kashi:connection', {
+    connected: extConnected > 0 || muxWinnerKind !== 'none',
+  });
+}
+
+function updateYtmLive(msg: ExtensionToOverlayMessage, clientId: number): void {
+  if (msg.type === 'source_gone') {
+    ytmLive = null;
+    return;
+  }
+  if (msg.type === 'track_changed') {
+    const identity = `${msg.track.source.type}:${msg.track.source.id}`;
+    ytmLive = {
+      kind: 'youtube_music',
+      identity,
+      playing: ytmLive?.playing ?? true,
+      title: msg.track.title,
+      artist: msg.track.artist,
+      album: msg.track.album,
+      durationMs: msg.track.duration_ms,
+      positionMs: ytmLive?.identity === identity ? ytmLive.positionMs : 0,
+      playbackRate: 1,
+      trackChangedAt: Date.now(),
+      artworkUrl: msg.track.artwork_url,
+      appId: 'youtube_music',
+      clientId,
+      tabId: msg.tab_id,
+    };
+    return;
+  }
+  if (msg.type === 'position' || msg.type === 'seek' || msg.type === 'playback_state') {
+    if (!ytmLive) return;
+    ytmLive = {
+      ...ytmLive,
+      playing: msg.is_playing,
+      positionMs: msg.position_ms,
+      playbackRate: 'playback_rate' in msg ? msg.playback_rate : ytmLive.playbackRate,
+      clientId,
+      tabId: msg.tab_id,
+    };
+  }
+}
+
+function injectExternalTrack(winner: PlayerCandidate): void {
+  const track = candidateToTrack(winner);
+  const msg: TrackChangedMessage = {
+    type: 'track_changed',
+    seq: 0,
+    sent_at: Date.now(),
+    tab_id: winner.tabId ?? EXTERNAL_TAB_ID,
+    track,
+  };
+  applyExtensionToOverlay(msg, winner.clientId ?? EXTERNAL_CLIENT_ID);
+}
+
+function injectExternalPosition(winner: PlayerCandidate): void {
+  const now = Date.now();
+  const msg: PositionMessage = {
+    type: 'position',
+    seq: 0,
+    sent_at: now,
+    tab_id: winner.tabId ?? EXTERNAL_TAB_ID,
+    position_ms: winner.positionMs,
+    playback_rate: winner.playbackRate,
+    is_playing: winner.playing,
+    captured_at: now,
+  };
+  applyExtensionToOverlay(msg, winner.clientId ?? EXTERNAL_CLIENT_ID);
+}
+
+function syncMux(): void {
+  const winner = pickWinner(currentSourceMode(), ytmLive, mergedSessions());
+  if (!winner) {
+    if (muxWinnerKind !== 'none' || latch.currentTrackKey) clearSource('no playing source');
+    muxWinnerKind = 'none';
+    broadcastConnection();
+    return;
+  }
+  const switched = muxWinnerKind !== winner.kind;
+  muxWinnerKind = winner.kind;
+  broadcastConnection();
+  if (winner.kind === 'youtube_music') {
+    if (switched || latch.currentTrackKey !== winner.identity) {
+      injectExternalTrack(winner);
+      injectExternalPosition(winner);
+    }
+    return;
+  }
+  if (latch.currentTrackKey !== winner.identity) {
+    log(`source ${winner.kind}: ${winner.artist} - ${winner.title}`);
+    injectExternalTrack(winner);
+  }
+  injectExternalPosition(winner);
+}
+
+function applySourceMode(mode: SourceMode): void {
+  settings?.update({ source_mode: mode });
+  log(`setting: source -> ${mode}`);
+  tray?.refresh();
+  syncMux();
+}
+
 function onExtensionMessage(msg: ExtensionToOverlayMessage, clientId: number): void {
   if (msg.type === 'log') {
     logExt(`[${msg.context}] ${msg.line}`);
     return; // diagnostics only — never forwarded to the renderer
   }
+  updateYtmLive(msg, clientId);
+  if (msg.type === 'source_gone') {
+    syncMux();
+    return;
+  }
+  const winner = pickWinner(currentSourceMode(), ytmLive, mergedSessions());
+  if (winner?.kind === 'youtube_music') {
+    muxWinnerKind = 'youtube_music';
+    broadcastConnection();
+    applyExtensionToOverlay(msg, clientId);
+    return;
+  }
+  syncMux();
+}
+
+function applyExtensionToOverlay(msg: ExtensionToOverlayMessage, clientId: number): void {
   const wasKey = latch.currentTrackKey;
   const decision = applyExtensionMessage(latch, msg, clientId);
   switch (decision.action) {
@@ -1079,8 +1230,21 @@ function buildServerConnections(): void {
       : null,
     getLyrics: (query, signal) => chain.getLyrics(query, signal),
     getJob: serverClient ? (jobId, signal) => serverClient!.getJob(jobId, signal) : undefined,
-    send: (payload) => send('kashi:lyrics', payload),
+    send: (payload) => {
+      const lines = payload['lines'];
+      if (Array.isArray(lines)) {
+        send('kashi:lyrics', {
+          ...payload,
+          lines: romanizeLines(lines as { text: string }[]),
+        });
+        return;
+      }
+      send('kashi:lyrics', payload);
+    },
     onServerMiss: (key, track) => {
+      if (track.source.type !== 'youtube' && track.source.type !== 'plex' && track.source.type !== 'upload') {
+        return;
+      }
       enqueueGate.serverMiss(key, Date.now(), lastIsPlaying);
       armGateTimer(track);
     },
@@ -1164,6 +1328,8 @@ app.whenReady().then(async () => {
     onTextScaleSelect: applyTextScale,
     getBoxScale: () => settings?.get().box_scale ?? DEFAULT_BOX_SCALE,
     onBoxScaleSelect: applyBoxScale,
+    getSourceMode: () => settings?.get().source_mode ?? 'auto',
+    onSourceModeSelect: applySourceMode,
     onServerSettings: openServerSettingsPrompt,
     onResetPosition: resetWindowPosition,
     getCanReportSync: () =>
@@ -1196,13 +1362,31 @@ app.whenReady().then(async () => {
   };
   tray = createTray(menuOptions);
 
+  smtcWatcher = new SmtcWatcher((sessions) => {
+    smtcSessions = sessions;
+    syncMux();
+  }, makeLogger('smtc'));
+  smtcWatcher.start();
+  beefwebClient = new BeefwebClient(
+    net.fetch.bind(net) as typeof fetch,
+    (candidate) => {
+      beefwebLive = candidate;
+      syncMux();
+    },
+    makeLogger('beefweb'),
+  );
+  beefwebClient.start();
+
   const server = new OverlayWsServer({
     // TODO(R-6): once the extension ID is pinned via the manifest `key`, pass
     // allowedOrigins (+ optional token) from settings. Until then any
     // chrome-extension:// origin is accepted; payloads are shape-validated.
     expectedClient: EXPECTED_EXTENSION, // bump in shared/version.ts with the manifest
     onMessage: onExtensionMessage,
-    onClientConnected: (count) => send('kashi:connection', { connected: count > 0 }),
+    onClientConnected: (count) => {
+      extConnected = count;
+      broadcastConnection();
+    },
     onClientHello: (client) => {
       const firstTime = lastExtensionClient === null;
       lastExtensionClient = client;
@@ -1216,11 +1400,16 @@ app.whenReady().then(async () => {
       }
     },
     onClientDisconnected: (count, clientId) => {
-      // The latch owner vanished (browser closed / reconnect with a new id):
-      // without this, the surviving stream is filtered forever (audit K3).
+      extConnected = count;
+      if (count === 0 || latch.activeSource?.clientId === clientId) {
+        ytmLive = null;
+      }
       const reason = clearReasonOnDisconnect(latch, count, clientId);
-      if (reason) clearSource(reason);
-      send('kashi:connection', { connected: count > 0 });
+      if (reason && pickWinner(currentSourceMode(), ytmLive, mergedSessions()) === null) {
+        clearSource(reason);
+        muxWinnerKind = 'none';
+      }
+      syncMux();
     },
     log: makeLogger('ws'),
   });
@@ -1237,6 +1426,8 @@ app.whenReady().then(async () => {
     settings?.flush();
     void durations.flush(); // best-effort, like the rest: quitting never waits
     stopTelemetry(); // best-effort final batch; quitting never waits on it
+    smtcWatcher?.stop();
+    beefwebClient?.stop();
     void server.stop();
   });
 });

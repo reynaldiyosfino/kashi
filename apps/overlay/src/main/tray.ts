@@ -36,10 +36,13 @@ import {
 } from '../shared/effect-level.js';
 import {
   OPACITY_PRESETS,
+  SOURCE_MODES,
   TIMING_OFFSET_PRESETS,
   nearestPresetIndex,
   presetLabel,
+  sourceModeLabel,
   timingOffsetLabel,
+  type SourceMode,
 } from './settings-logic.js';
 
 export interface KashiMenuOptions {
@@ -60,6 +63,8 @@ export interface KashiMenuOptions {
   onTextScaleSelect: (scale: TextScale) => void;
   getBoxScale: () => BoxScale;
   onBoxScaleSelect: (scale: BoxScale) => void;
+  getSourceMode: () => SourceMode;
+  onSourceModeSelect: (mode: SourceMode) => void;
   onServerSettings: () => void;
   onResetPosition: () => void;
   /** lrclib contribute-back (Faz 5 P6): visible only while a kashi-server
@@ -152,12 +157,20 @@ export function buildKashiMenu(opts: KashiMenuOptions): Menu {
     checked: scale === boxScale,
     click: () => opts.onBoxScaleSelect(scale),
   }));
+  const sourceMode = opts.getSourceMode();
+  const sourceItems: MenuItemConstructorOptions[] = SOURCE_MODES.map((mode) => ({
+    label: sourceModeLabel(mode),
+    type: 'radio',
+    checked: mode === sourceMode,
+    click: () => opts.onSourceModeSelect(mode),
+  }));
   // Parent labels carry the live value (retro 4.5): the menu is rebuilt on
   // every settings change anyway, so "— Full" / "— +100 ms" is free and saves
   // a submenu dive just to check the current state.
   return Menu.buildFromTemplate([
     { label: `Kashi v${opts.version}`, enabled: false },
     { type: 'separator' },
+    { label: `Source — ${sourceModeLabel(sourceMode)}`, submenu: sourceItems },
     { label: `Effects — ${effectLevelLabel(effectLevel)}`, submenu: effectItems },
     { label: `Theme colors — ${themeScopeLabel(themeScope)}`, submenu: themeItems },
     { label: `Word fill — ${fillStyleLabel(fillStyle)}`, submenu: fillItems },
@@ -215,7 +228,8 @@ export function createTray(opts: KashiMenuOptions): TrayHandle {
     tray.setContextMenu(buildKashiMenu(opts));
     // The tooltip answers "what is Kashi set to right now" without a click.
     tray.setToolTip(
-      `Kashi v${opts.version} — ${effectLevelLabel(opts.getEffectLevel())}, ` +
+      `Kashi v${opts.version} — ${sourceModeLabel(opts.getSourceMode())}, ` +
+        `${effectLevelLabel(opts.getEffectLevel())}, ` +
         `opacity ${presetLabel(opts.getAlpha())}, ` +
         `offset ${shortOffsetLabel(opts.getTimingOffset())}`,
     );

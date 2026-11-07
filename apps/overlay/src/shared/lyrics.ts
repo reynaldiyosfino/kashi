@@ -35,6 +35,8 @@ export interface LyricLine {
   uncertain?: boolean;
   /** Present on kashi-server word-sync documents (Faz 3B). */
   words?: WordTiming[];
+  /** Hepburn / RR / pinyin under CJK lines (empty omitted). */
+  romaji?: string;
 }
 
 export interface PaletteData {

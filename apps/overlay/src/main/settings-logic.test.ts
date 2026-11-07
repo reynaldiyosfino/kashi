@@ -178,6 +178,7 @@ describe('parseSettings', () => {
       prefetch_next_track: false,
       text_scale: 'medium',
       box_scale: 'medium',
+      source_mode: 'auto',
     };
     expect(parseSettings(JSON.stringify(stored))).toEqual(stored);
   });
@@ -382,5 +383,17 @@ describe('size presets (Faz 7 P3)', () => {
     expect(stored.text_scale).toBe('large');
     expect(stored.box_scale).toBe('small');
     expect(parseSettings(JSON.stringify(stored))).toEqual(stored);
+  });
+
+  it('defaults source_mode to auto and accepts the tray pins', () => {
+    expect(DEFAULT_SETTINGS.source_mode).toBe('auto');
+    expect(parseSettings('{}').source_mode).toBe('auto');
+    expect(parseSettings(JSON.stringify({ source_mode: 'foobar2000' })).source_mode).toBe(
+      'foobar2000',
+    );
+    expect(parseSettings(JSON.stringify({ source_mode: 'youtube_music' })).source_mode).toBe(
+      'youtube_music',
+    );
+    expect(parseSettings(JSON.stringify({ source_mode: 'spotify' })).source_mode).toBe('auto');
   });
 });
