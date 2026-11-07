@@ -201,17 +201,18 @@ Each `overlay-v*` tag (or a manual **overlay-release** run) builds installers.
 This fork publishes them on [reynaldiyosfino/kashi Releases](https://github.com/reynaldiyosfino/kashi/releases)
 (upstream: [csermet/kashi](https://github.com/csermet/kashi/releases)).
 
-- **Windows (prefer portable for daily use)** — unzip-free `Kashi-<version>-win-x64.exe`
-  (portable) plus the NSIS installer of the same name pattern. Double-click the
-  portable exe: overlay + tray, no `pnpm`. Tray → **Source** → **Auto**, play
-  foobar2000 with Windows now-playing (SMTC) on. YouTube Music still needs the
+- **Windows (prefer portable for daily use)** — `Kashi-<version>-portable-win-x64.exe`
+  (unzip-free, double-click) and `Kashi-<version>-setup-win-x64.exe` (NSIS installer,
+  Start Menu shortcut). Overlay + tray, no `pnpm`. Tray → **Source** → **Auto**,
+  play foobar2000 with Windows now-playing (SMTC) on. YouTube Music still needs the
   Chrome extension loaded unpacked; the exe is the overlay only.
 - **macOS (Apple Silicon)** — `Kashi-<version>-mac-arm64.dmg` (or `.zip`).
 - **Linux** — `.AppImage` or `.deb`.
 
 If you only need the Windows exe, run **Actions → overlay-release → Run workflow**
-with **windows_only** (default). Download the `overlay-windows` artifact; the
-portable file is the one you can run without installing.
+with **windows_only** (default). Download the `overlay-windows` artifact and run
+the `*-portable-win-x64.exe` file. First launch: SmartScreen → **More info** →
+**Run anyway**. Do not start the overlay from a Cursor background terminal.
 
 The builds are **not notarized** (no Apple Developer / code-signing
 certificate), so the OS warns on first launch — this is expected, not malware:

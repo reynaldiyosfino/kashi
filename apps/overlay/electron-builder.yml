@@ -24,10 +24,12 @@ win:
   target:
     - nsis
     - portable
-  artifactName: ${productName}-${version}-win-${arch}.${ext}
 nsis:
   oneClick: true
   deleteAppDataOnUninstall: false
+  artifactName: ${productName}-${version}-setup-win-${arch}.${ext}
+portable:
+  artifactName: ${productName}-${version}-portable-win-${arch}.${ext}
 linux:
   target:
     - AppImage
