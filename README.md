@@ -53,8 +53,9 @@ Japanese / Korean / Chinese lines also show **romaji / RR / pinyin** underneath.
 - 🎛️ **Tray-tunable** — **Source (Auto / YouTube Music / foobar2000)**, effect
   level (Off/Simple/Full/Hype), theme scope, text size and box size (S/M/L),
   box opacity (0–90%), lyric timing offset (presets or exact ms)
-- 🈳 **Romaji under CJK lyrics** — Hepburn (JP), Revised Romanization (KR),
-  Hanyu Pinyin (CN)
+- 🈳 **Romaji under CJK lyrics** — Unison (Better Lyrics translate API) first,
+  then local Hepburn kana / Hangul RR / CN pinyin. LRCLIB has no romaji field.
+  Mixed JP kanji needs Unison (or the row stays hidden offline).
 - 🎧 **foobar2000** — Auto uses Windows now-playing (SMTC). Optional
   [Beefweb](https://github.com/hyperblast/beefweb) on `127.0.0.1:8880` tightens
   the playhead. Enable foobar2000’s Windows media integration so SMTC publishes
@@ -63,8 +64,9 @@ Japanese / Korean / Chinese lines also show **romaji / RR / pinyin** underneath.
   If the box still says **Waiting for foobar2000**, quit the old portable exe
   and run a build that includes `smtc-watch.ps1` (Windows PowerShell 5.1 cannot
   call WinRT `AsTask` inline). Pin tray Source → foobar2000, play a track, and
-  keep Windows now-playing on. Optional Beefweb on `127.0.0.1:8880` if the
-  playhead stays at 0.
+  keep Windows now-playing on. Builds after the SMTC dead-timeline fix also
+  advance the playhead when foobar reports position 0; Beefweb on
+  `127.0.0.1:8880` remains optional for tighter sync.
 
 ## 🏗 How it works
 

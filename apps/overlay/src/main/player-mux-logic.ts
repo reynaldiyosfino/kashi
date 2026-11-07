@@ -24,6 +24,8 @@ export interface PlayerCandidate {
   playbackRate: number;
   /** Epoch ms when this identity first appeared (or last changed). */
   trackChangedAt: number;
+  /** Epoch ms when this snapshot was sampled (SMTC dead-timeline extrapolate). */
+  sampledAt?: number;
   artworkUrl?: string;
   /** AppUserModelId or similar, for SMTC sessions. */
   appId?: string;

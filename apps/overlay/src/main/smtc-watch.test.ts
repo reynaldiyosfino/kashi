@@ -52,4 +52,85 @@ describe('smtcSessionsToCandidates', () => {
     );
     expect(session?.playing).toBe(true);
   });
+
+  it('extrapolates when SMTC timeline stays at 0 while playing', () => {
+    const row = {
+      appId: 'foobar2000.exe',
+      title: '火星人',
+      artist: 'ヨルシカ',
+      status: 'Playing',
+      positionMs: 0,
+      durationMs: 0,
+    };
+    const first = smtcSessionsToCandidates([row], 1000, new Map());
+    expect(first[0]?.positionMs).toBe(0);
+    const second = smtcSessionsToCandidates(
+      [row],
+      1400,
+      new Map([[first[0]!.identity, first[0]!]]),
+    );
+    expect(second[0]?.positionMs).toBe(400);
+  });
+
+  it('freezes extrapolated position while paused', () => {
+    const playing = smtcSessionsToCandidates(
+      [
+        {
+          appId: 'foobar2000.exe',
+          title: 'T',
+          artist: 'A',
+          status: 'Playing',
+          positionMs: 0,
+        },
+      ],
+      1000,
+      new Map(),
+    );
+    const advanced = smtcSessionsToCandidates(
+      [
+        {
+          appId: 'foobar2000.exe',
+          title: 'T',
+          artist: 'A',
+          status: 'Playing',
+          positionMs: 0,
+        },
+      ],
+      1500,
+      new Map([[playing[0]!.identity, playing[0]!]]),
+    );
+    const paused = smtcSessionsToCandidates(
+      [
+        {
+          appId: 'foobar2000.exe',
+          title: 'T',
+          artist: 'A',
+          status: 'Paused',
+          positionMs: 0,
+        },
+      ],
+      2000,
+      new Map([[advanced[0]!.identity, advanced[0]!]]),
+    );
+    expect(paused[0]?.positionMs).toBe(500);
+    expect(paused[0]?.playing).toBe(false);
+  });
+
+  it('does not override a real SMTC timeline', () => {
+    const [session] = smtcSessionsToCandidates(
+      [
+        {
+          appId: 'foobar2000.exe',
+          title: 'T',
+          artist: 'A',
+          status: 'Playing',
+          positionMs: 12_000,
+          durationMs: 200_000,
+        },
+      ],
+      1,
+      new Map(),
+    );
+    expect(session?.positionMs).toBe(12_000);
+  });
 });

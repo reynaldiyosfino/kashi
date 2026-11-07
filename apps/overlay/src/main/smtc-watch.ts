@@ -46,6 +46,28 @@ export function parseSmtcJsonLine(line: string): SmtcSessionRaw[] {
   }
 }
 
+/** foobar2000 SMTC often reports Playing with position=0 and no duration. */
+export function isDeadSmtcTimeline(positionMs: number, durationMs: number | undefined): boolean {
+  return positionMs === 0 && (durationMs === undefined || durationMs <= 0);
+}
+
+export function resolveSmtcPositionMs(
+  rowPositionMs: number,
+  durationMs: number | undefined,
+  playing: boolean,
+  prev: PlayerCandidate | undefined,
+  now: number,
+): number {
+  const reported = Math.max(0, rowPositionMs);
+  if (!isDeadSmtcTimeline(reported, durationMs)) return reported;
+  if (!prev) return 0;
+  if (!playing) return Math.max(0, prev.positionMs);
+  if (!prev.playing) return Math.max(0, prev.positionMs);
+  const sampledAt = prev.sampledAt ?? prev.trackChangedAt;
+  const dt = Math.max(0, now - sampledAt);
+  return Math.max(0, prev.positionMs) + dt;
+}
+
 export function smtcSessionsToCandidates(
   rows: readonly SmtcSessionRaw[],
   now: number,
@@ -64,6 +86,13 @@ export function smtcSessionsToCandidates(
     const trackChangedAt =
       prev && prev.identity === identity ? prev.trackChangedAt : now;
     const durationMs = row.durationMs && row.durationMs > 0 ? row.durationMs : undefined;
+    const positionMs = resolveSmtcPositionMs(
+      row.positionMs ?? 0,
+      durationMs,
+      playing,
+      prev,
+      now,
+    );
     out.push({
       kind,
       identity,
@@ -72,9 +101,10 @@ export function smtcSessionsToCandidates(
       artist,
       album: row.album || undefined,
       durationMs,
-      positionMs: Math.max(0, row.positionMs ?? 0),
+      positionMs,
       playbackRate: 1,
       trackChangedAt,
+      sampledAt: now,
       appId,
     });
   }

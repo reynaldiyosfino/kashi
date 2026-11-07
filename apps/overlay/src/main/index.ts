@@ -33,7 +33,8 @@ import {
   type PlayerKind,
   type SourceMode,
 } from './player-mux-logic.js';
-import { romanizeLines } from './romanize-logic.js';
+import { romanizeLineLocal, romanizeLines } from './romanize-logic.js';
+import type { UnisonFetch } from './unison-romanize.js';
 import { SmtcWatcher } from './smtc-watch.js';
 import {
   DEFAULT_EFFECT_LEVEL,
@@ -1250,14 +1251,24 @@ function buildServerConnections(): void {
     getJob: serverClient ? (jobId, signal) => serverClient!.getJob(jobId, signal) : undefined,
     send: (payload) => {
       const lines = payload['lines'];
-      if (Array.isArray(lines)) {
-        send('kashi:lyrics', {
-          ...payload,
-          lines: romanizeLines(lines as { text: string }[]),
-        });
+      if (!Array.isArray(lines)) {
+        send('kashi:lyrics', payload);
         return;
       }
-      send('kashi:lyrics', payload);
+      const typed = lines as { text: string }[];
+      // Paint immediately with local fallback (kana/Hangul/CN); Unison upgrades JP.
+      const local = typed.map((line) => {
+        const romaji = romanizeLineLocal(line.text);
+        return romaji ? { ...line, romaji } : { ...line };
+      });
+      send('kashi:lyrics', { ...payload, lines: local });
+      const key = typeof payload['key'] === 'string' ? payload['key'] : '';
+      void romanizeLines(typed, {
+        fetchFn: net.fetch.bind(net) as UnisonFetch,
+      }).then((romanized) => {
+        if (key && latch.currentTrackKey !== key) return;
+        send('kashi:lyrics', { ...payload, lines: romanized });
+      });
     },
     onServerMiss: (key, track) => {
       if (track.source.type !== 'youtube' && track.source.type !== 'plex' && track.source.type !== 'upload') {
