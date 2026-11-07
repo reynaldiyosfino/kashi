@@ -1,4 +1,7 @@
-# Packaged overlay releases (Faz 5 P5). Trigger: push an overlay-v* tag.
+# Packaged overlay releases (Faz 5 P5). Trigger: push an overlay-v* tag,
+# or run overlay-release from the Actions tab (workflow_dispatch). Dispatch
+# can skip Linux/macOS when you only need the Windows exe; the draft GitHub
+# Release still only runs on overlay-v* tags (softprops needs a tag).
 # Linux builds AND smoke-tests the AppImage headless (the workspace-dep
 # bundle trap — @kashi/protocol resolving to TS source — only bites at
 # RUNTIME, so packaging alone proves nothing). Windows builds nsis+portable
@@ -11,12 +14,19 @@ name: overlay-release
 on:
   push:
     tags: ['overlay-v*']
+  workflow_dispatch:
+    inputs:
+      windows_only:
+        description: Skip Linux and macOS (faster Windows nsis+portable exe)
+        type: boolean
+        default: true
 
 permissions:
   contents: write
 
 jobs:
   linux:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.windows_only != 'true'
     runs-on: ubuntu-latest
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1' # electron-builder fetches its own dist
@@ -97,6 +107,7 @@ jobs:
           if-no-files-found: error
 
   macos:
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.windows_only != 'true'
     # macos-latest is Apple Silicon (arm64) — matches the M2 target. UNSIGNED:
     # CSC_IDENTITY_AUTO_DISCOVERY=false stops electron-builder hunting for a
     # cert, so the build never fails for lack of one (identity:null in the yml
@@ -131,6 +142,12 @@ jobs:
 
   release:
     needs: [linux, windows, macos]
+    if: |
+      always() &&
+      startsWith(github.ref, 'refs/tags/overlay-v') &&
+      needs.windows.result == 'success' &&
+      (needs.linux.result == 'success' || needs.linux.result == 'skipped') &&
+      (needs.macos.result == 'success' || needs.macos.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

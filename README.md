@@ -197,17 +197,27 @@ Project-specific review agents live in `.claude/agents/`.
 
 ## 📦 Prebuilt downloads
 
-Each `overlay-v*` tag builds installers on the
-[Releases](https://github.com/csermet/kashi/releases) page:
+Each `overlay-v*` tag (or a manual **overlay-release** run) builds installers.
+This fork publishes them on [reynaldiyosfino/kashi Releases](https://github.com/reynaldiyosfino/kashi/releases)
+(upstream: [csermet/kashi](https://github.com/csermet/kashi/releases)).
 
-- **Windows** — `Kashi-<version>-win-x64.exe` (installer) or the `portable` build.
+- **Windows (prefer portable for daily use)** — unzip-free `Kashi-<version>-win-x64.exe`
+  (portable) plus the NSIS installer of the same name pattern. Double-click the
+  portable exe: overlay + tray, no `pnpm`. Tray → **Source** → **Auto**, play
+  foobar2000 with Windows now-playing (SMTC) on. YouTube Music still needs the
+  Chrome extension loaded unpacked; the exe is the overlay only.
 - **macOS (Apple Silicon)** — `Kashi-<version>-mac-arm64.dmg` (or `.zip`).
 - **Linux** — `.AppImage` or `.deb`.
+
+If you only need the Windows exe, run **Actions → overlay-release → Run workflow**
+with **windows_only** (default). Download the `overlay-windows` artifact; the
+portable file is the one you can run without installing.
 
 The builds are **not notarized** (no Apple Developer / code-signing
 certificate), so the OS warns on first launch — this is expected, not malware:
 
-- **Windows:** SmartScreen → *More info* → *Run anyway*.
+- **Windows:** unsigned build — SmartScreen → *More info* → *Run anyway*.
+  Then leave the tray source on Auto (or pin foobar2000) while foobar plays.
 - **macOS (Apple Silicon):** the app is ad-hoc signed but **not notarized**
   (no paid Apple Developer account), so Gatekeeper blocks the first launch.
   Copy it to `/Applications`, then:
