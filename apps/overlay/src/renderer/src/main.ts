@@ -115,6 +115,7 @@ declare global {
 
 const boxEl = document.getElementById('lyric-box');
 const lineEl = document.getElementById('lyric-line');
+const romajiEl = document.getElementById('lyric-romaji');
 const searchEl = document.getElementById('search-line');
 const offsetFlashEl = document.getElementById('offset-flash');
 // Outside-the-box effect anchors (Faz 6.5 P2): top icon band + left-gutter
@@ -776,6 +777,10 @@ function resetToIdle(): void {
   clock.reset();
   statusText = 'Kashi';
   statusDim = true;
+  if (romajiEl) {
+    romajiEl.hidden = true;
+    romajiEl.textContent = '';
+  }
   clearEnrichment();
 }
 
@@ -960,10 +965,8 @@ window.kashi.onSourceGone(() => {
 window.kashi.onConnection((payload) => {
   const { connected } = payload as { connected: boolean };
   window.kashi.log(`connection: ${connected}`);
-  if (!connected) {
-    // Source gone → back to the small idle badge (no stale lyrics on screen).
-    resetToIdle();
-  }
+  // Idle is driven by source-gone / watchdog, not by the YTM extension
+  // dropping — foobar2000 / SMTC can still be playing.
   ensureLoop();
 });
 
@@ -1205,8 +1208,17 @@ function frame(): void {
 
   paintBeat(rawPos);
   paintWordKaraoke(words, lineIndex, activeText, pos);
+  paintRomaji(lineIndex, activeText);
   paintEnergy(rawPos);
   scheduleNextFrame();
+}
+
+function paintRomaji(lineIndex: number, activeText: string | null): void {
+  if (!romajiEl) return;
+  const text =
+    lineIndex >= 0 && activeText ? (lines[lineIndex]?.romaji ?? '').trim() : '';
+  romajiEl.hidden = text.length === 0;
+  if (text && romajiEl.textContent !== text) romajiEl.textContent = text;
 }
 
 function checkWatchdog(): void {

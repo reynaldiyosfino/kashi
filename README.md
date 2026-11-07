@@ -10,11 +10,12 @@
 [![Chrome MV3](https://img.shields.io/badge/Extension-Chrome%20MV3-4285F4)](apps/extension)
 [![FastAPI](https://img.shields.io/badge/Server-FastAPI-009688)](apps/server)
 
-Play music on YouTube Music; Kashi shows the lyrics in a transparent, draggable,
-click-through overlay anywhere on your screen. Works out of the box with
-line-synced lyrics from [LRCLIB](https://lrclib.net) — add the optional
-self-hosted server and songs get **word-by-word karaoke highlighting**,
-**album-art color themes** and **beat-synced effects**.
+Play music on **YouTube Music** or **foobar2000**; Kashi detects whichever is
+playing and shows lyrics in a transparent, draggable, click-through overlay.
+Works out of the box with line-synced lyrics from [LRCLIB](https://lrclib.net)
+— add the optional self-hosted server and songs get **word-by-word karaoke
+highlighting**, **album-art color themes** and **beat-synced effects**.
+Japanese / Korean / Chinese lines also show **romaji / RR / pinyin** underneath.
 
 </div>
 
@@ -49,9 +50,15 @@ self-hosted server and songs get **word-by-word karaoke highlighting**,
   drawn, never over the text, and completely idle when nothing is happening
 - 🖱️ **Stays out of your way** — transparent, click-through, always-on-top;
   drag it anywhere, it remembers its place across monitors and DPI changes
-- 🎛️ **Tray-tunable** — effect level (Off/Simple/Full/Hype), theme scope, text
-  size and box size (S/M/L), box opacity (0–90%), lyric timing offset (presets
-  or exact ms)
+- 🎛️ **Tray-tunable** — **Source (Auto / YouTube Music / foobar2000)**, effect
+  level (Off/Simple/Full/Hype), theme scope, text size and box size (S/M/L),
+  box opacity (0–90%), lyric timing offset (presets or exact ms)
+- 🈳 **Romaji under CJK lyrics** — Hepburn (JP), Revised Romanization (KR),
+  Hanyu Pinyin (CN)
+- 🎧 **foobar2000** — Auto uses Windows now-playing (SMTC). Optional
+  [Beefweb](https://github.com/hyperblast/beefweb) on `127.0.0.1:8880` tightens
+  the playhead. Enable foobar2000’s Windows media integration so SMTC publishes
+  the current track.
 
 ## 🏗 How it works
 
@@ -62,7 +69,10 @@ flowchart LR
         CS["content script<br/>(position via timeupdate)"] --> SW
         SW["extension<br/>service worker"]
     end
-    SW -- "ws://127.0.0.1:17890" --> OV
+    SW -- "ws://127.0.0.1:17890" --> mux
+    smtc["Windows SMTC / foobar2000"] --> mux
+    beef["Beefweb optional"] --> mux
+    mux[PlayerMux_Auto] --> OV
     subgraph desktop["Desktop"]
         OV["kashi-overlay (Electron)<br/>transparent · click-through · always-on-top<br/>position clock · effect engine · disk cache"]
     end
@@ -86,16 +96,17 @@ flowchart LR
 Prereqs: Node.js 22 LTS + pnpm 11 (via corepack).
 
 ```bash
-git clone https://github.com/csermet/kashi && cd kashi
+git clone https://github.com/reynaldiyosfino/kashi && cd kashi
 pnpm install
 pnpm --filter kashi-extension build   # then load apps/extension/dist as an
                                       # unpacked extension at chrome://extensions
 pnpm --filter kashi-overlay dev       # start the overlay
 ```
 
-Open [music.youtube.com](https://music.youtube.com), play a song — lyrics appear
-within a couple of seconds. Right-click the lyric box (or the tray icon) for
-settings.
+Play a song in [YouTube Music](https://music.youtube.com) **or** foobar2000 —
+lyrics appear within a couple of seconds. Right-click the lyric box (or the
+tray icon) for settings. Tray → **Source** pins Auto / YouTube Music /
+foobar2000 (`source_mode` in `kashi-settings.json`).
 
 ## 🖥 Self-hosting the server (optional)
 

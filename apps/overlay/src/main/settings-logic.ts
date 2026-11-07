@@ -16,6 +16,14 @@ import {
 import { normalizeServerUrl } from './kashi-server-logic.js';
 import { DEFAULT_BOX_SCALE, parseBoxScale, type BoxScale } from '../shared/box-zone.js';
 import { DEFAULT_TEXT_SCALE, parseTextScale, type TextScale } from '../shared/text-scale.js';
+import {
+  DEFAULT_SOURCE_MODE,
+  parseSourceMode,
+  type SourceMode,
+} from './player-mux-logic.js';
+
+export { DEFAULT_SOURCE_MODE, parseSourceMode, SOURCE_MODES, sourceModeLabel } from './player-mux-logic.js';
+export type { SourceMode } from './player-mux-logic.js';
 
 export { DEFAULT_TEXT_SCALE, TEXT_SCALES, TEXT_SCALE_FACTORS, parseTextScale } from '../shared/text-scale.js';
 export type { TextScale } from '../shared/text-scale.js';
@@ -102,6 +110,11 @@ export interface StoredSettings {
    */
   text_scale: TextScale;
   box_scale: BoxScale;
+  /**
+   * Which player the overlay follows. Auto detects YouTube Music (extension)
+   * vs foobar2000 (SMTC / optional Beefweb) from whichever is actually playing.
+   */
+  source_mode: SourceMode;
 }
 
 export const DEFAULT_SETTINGS: StoredSettings = {
@@ -119,6 +132,7 @@ export const DEFAULT_SETTINGS: StoredSettings = {
   prefetch_next_track: true,
   text_scale: DEFAULT_TEXT_SCALE,
   box_scale: DEFAULT_BOX_SCALE,
+  source_mode: DEFAULT_SOURCE_MODE,
 };
 
 /** Integer ms in [-500, 500]; garbage → 0 (Off). */
@@ -304,5 +318,6 @@ export function parseSettings(raw: string): StoredSettings {
     prefetch_next_track: record['prefetch_next_track'] !== false,
     text_scale: parseTextScale(record['text_scale']),
     box_scale: parseBoxScale(record['box_scale']),
+    source_mode: parseSourceMode(record['source_mode']),
   };
 }

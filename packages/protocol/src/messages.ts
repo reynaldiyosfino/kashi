@@ -28,7 +28,7 @@ export interface Envelope {
 }
 
 export interface TrackSource {
-  type: 'youtube' | 'plex' | 'upload';
+  type: 'youtube' | 'plex' | 'upload' | 'foobar2000' | 'smtc';
   id: string;
 }
 
