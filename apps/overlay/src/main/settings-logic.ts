@@ -13,7 +13,7 @@ import {
   type FillStyle,
   type ThemeScope,
 } from '../shared/effect-level.js';
-import { normalizeServerUrl } from './kashi-server-logic.js';
+import { acceptUserEndpoint } from './kashi-server-logic.js';
 import { DEFAULT_BOX_SCALE, parseBoxScale, type BoxScale } from '../shared/box-zone.js';
 import { DEFAULT_TEXT_SCALE, parseTextScale, type TextScale } from '../shared/text-scale.js';
 import {
@@ -290,7 +290,7 @@ export function parseSettings(raw: string): StoredSettings {
     }
   }
 
-  const serverUrl = normalizeServerUrl(record['server_url']);
+  const serverUrl = acceptUserEndpoint(record['server_url']);
   const apiKey =
     typeof record['server_api_key'] === 'string' && record['server_api_key'].trim() !== ''
       ? record['server_api_key'].trim()
@@ -307,7 +307,7 @@ export function parseSettings(raw: string): StoredSettings {
     window_bounds: bounds,
     server_url: serverUrl,
     server_api_key: apiKey,
-    lyrics_mirror_url: normalizeServerUrl(record['lyrics_mirror_url']),
+    lyrics_mirror_url: acceptUserEndpoint(record['lyrics_mirror_url']),
     timing_offset_ms: clampTimingOffset(record['timing_offset_ms']),
     effect_level: parseEffectLevel(record['effect_level']),
     theme_scope: parseThemeScope(record['theme_scope']),

@@ -200,6 +200,12 @@ describe('parseSettings', () => {
     expect(parsed.server_url).toBeNull(); // serverless mode may still use a mirror
     expect(parseSettings(JSON.stringify({ lyrics_mirror_url: 'ftp://x' })).lyrics_mirror_url).toBeNull();
     expect(parseSettings('{}').lyrics_mirror_url).toBeNull();
+    expect(
+      parseSettings(JSON.stringify({ server_url: 'https://kashi.example.com' })).server_url,
+    ).toBeNull();
+    expect(
+      parseSettings(JSON.stringify({ lyrics_mirror_url: 'http://lrclib.lan' })).lyrics_mirror_url,
+    ).toBeNull();
   });
 
   it('clamps out-of-range alpha and drops malformed bounds', () => {

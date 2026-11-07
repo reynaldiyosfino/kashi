@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  acceptUserEndpoint,
   cacheFileName,
+  isDocsPlaceholderUrl,
   mapDocument,
   mapFx,
   normalizeServerUrl,
@@ -37,6 +39,20 @@ describe('normalizeServerUrl', () => {
     for (const bad of [null, 42, '', 'ftp://x', 'not a url', 'http://has space']) {
       expect(normalizeServerUrl(bad)).toBeNull();
     }
+  });
+});
+
+describe('docs placeholder endpoints', () => {
+  it('flags example.com and lrclib.lan', () => {
+    expect(isDocsPlaceholderUrl('https://kashi.example.com')).toBe(true);
+    expect(isDocsPlaceholderUrl('http://lrclib.lan')).toBe(true);
+    expect(isDocsPlaceholderUrl('http://cnr-intel:8080')).toBe(false);
+  });
+
+  it('acceptUserEndpoint drops placeholders', () => {
+    expect(acceptUserEndpoint('https://kashi.example.com')).toBeNull();
+    expect(acceptUserEndpoint('http://lrclib.lan/')).toBeNull();
+    expect(acceptUserEndpoint('http://cnr-intel:8080/')).toBe('http://cnr-intel:8080');
   });
 });
 

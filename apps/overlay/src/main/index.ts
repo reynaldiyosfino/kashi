@@ -48,7 +48,7 @@ import { EXPECTED_EXTENSION, KASHI_VERSION } from '../shared/version.js';
 import { EnqueueGate } from './enqueue-gate.js';
 import { enableUtf8Console, makeLogger, makeWarnLogger } from './log.js';
 import { KashiServerClient } from './kashi-server.js';
-import { normalizeServerUrl } from './kashi-server-logic.js';
+import { isDocsPlaceholderUrl, normalizeServerUrl } from './kashi-server-logic.js';
 import { LookupOrchestrator } from './lookup-orchestrator.js';
 import { LRCLIB_APP_ID, LrclibClient } from './lrclib.js';
 import { LyricsChain } from './lyrics-chain.js';
@@ -187,6 +187,7 @@ let ytmLive: PlayerCandidate | null = null;
 let smtcSessions: PlayerCandidate[] = [];
 let beefwebLive: PlayerCandidate | null = null;
 let muxWinnerKind: PlayerKind | 'none' = 'none';
+let loggedNoSource = false;
 let smtcWatcher: SmtcWatcher | null = null;
 let beefwebClient: BeefwebClient | null = null;
 let extConnected = 0;
@@ -328,11 +329,18 @@ function injectExternalPosition(winner: PlayerCandidate): void {
 function syncMux(): void {
   const winner = pickWinner(currentSourceMode(), ytmLive, mergedSessions());
   if (!winner) {
+    if (!loggedNoSource) {
+      loggedNoSource = true;
+      log(
+        'no playing source — enable foobar2000 Windows now-playing (SMTC) or Beefweb on 127.0.0.1:8880',
+      );
+    }
     if (muxWinnerKind !== 'none' || latch.currentTrackKey) clearSource('no playing source');
     muxWinnerKind = 'none';
     broadcastConnection();
     return;
   }
+  loggedNoSource = false;
   const switched = muxWinnerKind !== winner.kind;
   muxWinnerKind = winner.kind;
   broadcastConnection();
@@ -354,6 +362,7 @@ function applySourceMode(mode: SourceMode): void {
   settings?.update({ source_mode: mode });
   log(`setting: source -> ${mode}`);
   tray?.refresh();
+  broadcastSettings();
   syncMux();
 }
 
@@ -728,6 +737,7 @@ function broadcastSettings(): void {
     fill_style: current.fill_style,
     text_scale: current.text_scale,
     box_scale: current.box_scale,
+    source_mode: current.source_mode,
   });
 }
 
@@ -961,17 +971,25 @@ ipcMain.on('kashi:server-settings-submit', (event, raw: unknown) => {
   // Validate everything before writing anything: a half-applied save is
   // worse than a rejected one.
   const trimmedUrl = typeof url === 'string' ? url.trim() : '';
-  const normalized = trimmedUrl === '' ? null : normalizeServerUrl(trimmedUrl);
-  if (trimmedUrl !== '' && normalized === null) {
+  const parsedUrl = trimmedUrl === '' ? null : normalizeServerUrl(trimmedUrl);
+  if (trimmedUrl !== '' && parsedUrl === null) {
     warn(`server settings: invalid URL ${JSON.stringify(trimmedUrl)} — nothing changed`);
     return;
   }
+  if (parsedUrl && isDocsPlaceholderUrl(parsedUrl)) {
+    warn(`server settings: ignoring docs placeholder ${parsedUrl}`);
+  }
+  const normalized = parsedUrl && !isDocsPlaceholderUrl(parsedUrl) ? parsedUrl : null;
   const trimmedMirror = typeof mirror === 'string' ? mirror.trim() : '';
-  const mirrorUrl = trimmedMirror === '' ? null : normalizeServerUrl(trimmedMirror);
-  if (trimmedMirror !== '' && mirrorUrl === null) {
+  const parsedMirror = trimmedMirror === '' ? null : normalizeServerUrl(trimmedMirror);
+  if (trimmedMirror !== '' && parsedMirror === null) {
     warn(`server settings: invalid mirror URL ${JSON.stringify(trimmedMirror)} — nothing changed`);
     return;
   }
+  if (parsedMirror && isDocsPlaceholderUrl(parsedMirror)) {
+    warn(`server settings: ignoring docs placeholder mirror ${parsedMirror}`);
+  }
+  const mirrorUrl = parsedMirror && !isDocsPlaceholderUrl(parsedMirror) ? parsedMirror : null;
   settings.update({ lyrics_mirror_url: mirrorUrl });
   log(`lyrics mirror: ${mirrorUrl ?? 'none (lrclib.net only)'}`);
   if (normalized === null) {

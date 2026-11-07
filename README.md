@@ -58,7 +58,11 @@ Japanese / Korean / Chinese lines also show **romaji / RR / pinyin** underneath.
 - 🎧 **foobar2000** — Auto uses Windows now-playing (SMTC). Optional
   [Beefweb](https://github.com/hyperblast/beefweb) on `127.0.0.1:8880` tightens
   the playhead. Enable foobar2000’s Windows media integration so SMTC publishes
-  the current track.
+  the current track. **Server settings stay empty** (serverless → lrclib.net).
+  Do not save the dialog placeholders (`kashi.example.com`, `lrclib.lan`).
+  If the box still says **Waiting for foobar2000**, pin tray Source →
+  foobar2000, play a track (not just open the player), and turn on Windows
+  now-playing in foobar Preferences.
 
 ## 🏗 How it works
 
@@ -212,7 +216,9 @@ This fork publishes them on [reynaldiyosfino/kashi Releases](https://github.com/
 If you only need the Windows exe, run **Actions → overlay-release → Run workflow**
 with **windows_only** (default). Download the `overlay-windows` artifact and run
 the `*-portable-win-x64.exe` file. First launch: SmartScreen → **More info** →
-**Run anyway**. Do not start the overlay from a Cursor background terminal.
+**Run anyway**. Tray **Server settings**: leave URL, key, and mirror **empty**
+(Cancel if you only opened the dialog). Do not start the overlay from a Cursor
+background terminal.
 
 The builds are **not notarized** (no Apple Developer / code-signing
 certificate), so the OS warns on first launch — this is expected, not malware:

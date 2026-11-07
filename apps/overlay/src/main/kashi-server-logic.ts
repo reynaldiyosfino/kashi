@@ -97,6 +97,23 @@ export function normalizeServerUrl(value: unknown): string | null {
   return trimmed;
 }
 
+/** Dialog / README placeholders must never be stored as a real endpoint. */
+export function isDocsPlaceholderUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === 'example.com' || host.endsWith('.example.com') || host === 'lrclib.lan';
+  } catch {
+    return false;
+  }
+}
+
+/** Shape-valid http(s) URL, excluding docs placeholders. */
+export function acceptUserEndpoint(value: unknown): string | null {
+  const url = normalizeServerUrl(value);
+  if (!url || isDocsPlaceholderUrl(url)) return null;
+  return url;
+}
+
 /** Path-safe cache file name (server ids are [A-Za-z0-9_-], but be defensive). */
 export function cacheFileName(sourceType: string, sourceId: string): string {
   const safe = (v: string) => v.replace(/[^A-Za-z0-9_-]/g, (c) => `%${c.charCodeAt(0).toString(16)}`);

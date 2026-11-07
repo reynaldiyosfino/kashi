@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { parseSmtcJsonLine, smtcSessionsToCandidates } from './smtc-watch.js';
+import { isSmtcPlaying, parseSmtcJsonLine, smtcSessionsToCandidates } from './smtc-watch.js';
+
+describe('isSmtcPlaying', () => {
+  it('accepts Playing and WinRT enum 4', () => {
+    expect(isSmtcPlaying('Playing')).toBe(true);
+    expect(isSmtcPlaying('playing')).toBe(true);
+    expect(isSmtcPlaying('4')).toBe(true);
+    expect(isSmtcPlaying(4)).toBe(true);
+    expect(isSmtcPlaying('Paused')).toBe(false);
+    expect(isSmtcPlaying('5')).toBe(false);
+    expect(isSmtcPlaying('')).toBe(false);
+  });
+});
 
 describe('parseSmtcJsonLine', () => {
   it('parses an array or a single object', () => {
@@ -30,5 +42,14 @@ describe('smtcSessionsToCandidates', () => {
 
   it('skips untitled sessions', () => {
     expect(smtcSessionsToCandidates([{ appId: 'x', title: '  ' }], 1, new Map())).toEqual([]);
+  });
+
+  it('treats numeric PlaybackStatus 4 as playing', () => {
+    const [session] = smtcSessionsToCandidates(
+      [{ appId: 'foobar2000.exe', title: 'T', artist: 'A', status: '4' }],
+      1,
+      new Map(),
+    );
+    expect(session?.playing).toBe(true);
   });
 });

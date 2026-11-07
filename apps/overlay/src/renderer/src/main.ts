@@ -146,7 +146,8 @@ let lines: LyricLine[] = [];
 let adActive = false;
 let searching = false;
 // Idle default (Caner's call): no big "waiting" text — a small dim badge.
-let statusText = 'Kashi';
+let sourceMode: 'auto' | 'youtube_music' | 'foobar2000' = 'auto';
+let statusText = 'Waiting for foobar2000';
 let statusDim = true;
 let trackLabel = '';
 let lastPlaybackMono = performance.now();
@@ -768,6 +769,10 @@ function clearEnrichment(): void {
   applyPaletteVars();
 }
 
+function idleStatusText(): string {
+  return sourceMode === 'youtube_music' ? 'Kashi' : 'Waiting for foobar2000';
+}
+
 function resetToIdle(): void {
   idleStash.idle(currentKey);
   currentKey = null;
@@ -775,7 +780,7 @@ function resetToIdle(): void {
   adActive = false;
   searching = false;
   clock.reset();
-  statusText = 'Kashi';
+  statusText = idleStatusText();
   statusDim = true;
   if (romajiEl) {
     romajiEl.hidden = true;
@@ -1070,16 +1075,29 @@ window.kashi.onSettings((payload) => {
   // Captured BEFORE the timing-offset branch flips it: branches below the
   // flip would otherwise treat the startup replay as a live change.
   const live = settingsSeen;
-  const { box_alpha, timing_offset_ms, effect_level, theme_scope, fill_style, text_scale, box_scale } =
-    payload as {
-      box_alpha?: unknown;
-      timing_offset_ms?: unknown;
-      effect_level?: unknown;
-      theme_scope?: unknown;
-      fill_style?: unknown;
-      text_scale?: unknown;
-      box_scale?: unknown;
-    };
+  const {
+    box_alpha,
+    timing_offset_ms,
+    effect_level,
+    theme_scope,
+    fill_style,
+    text_scale,
+    box_scale,
+    source_mode,
+  } = payload as {
+    box_alpha?: unknown;
+    timing_offset_ms?: unknown;
+    effect_level?: unknown;
+    theme_scope?: unknown;
+    fill_style?: unknown;
+    text_scale?: unknown;
+    box_scale?: unknown;
+    source_mode?: unknown;
+  };
+  if (source_mode === 'auto' || source_mode === 'youtube_music' || source_mode === 'foobar2000') {
+    sourceMode = source_mode;
+    if (currentKey === null && !searching) statusText = idleStatusText();
+  }
   applyBoxAlpha(box_alpha);
   applyTimingOffset(timing_offset_ms);
   settingsSeen = true;

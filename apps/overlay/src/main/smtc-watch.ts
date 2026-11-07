@@ -68,6 +68,21 @@ while ($true) {
 }
 `;
 
+/**
+ * WinRT PlaybackStatus: Closed=0 Opened=1 Changing=2 Stopped=3 Playing=4
+ * Paused=5. PowerShell `[string]$pb.PlaybackStatus` is sometimes `"4"`.
+ */
+export function isSmtcPlaying(status: unknown): boolean {
+  const raw = String(status ?? '')
+    .trim()
+    .toLowerCase();
+  return raw === 'playing' || raw === '4';
+}
+
+function smtcRowKey(row: SmtcSessionRaw): string {
+  return `${row.appId ?? ''}|${row.title ?? ''}|${row.artist ?? ''}|${row.status ?? ''}`;
+}
+
 export function parseSmtcJsonLine(line: string): SmtcSessionRaw[] {
   const trimmed = line.trim();
   if (!trimmed) return [];
@@ -94,7 +109,7 @@ export function smtcSessionsToCandidates(
     const appId = row.appId ?? '';
     const kind = isFoobarAppId(appId) ? ('foobar2000' as const) : ('smtc' as const);
     const identity = `${kind}:${slugIdentity([appId, artist, title, row.album ?? ''])}`;
-    const playing = String(row.status ?? '').toLowerCase() === 'playing';
+    const playing = isSmtcPlaying(row.status);
     const prev = previous.get(identity);
     const trackChangedAt =
       prev && prev.identity === identity ? prev.trackChangedAt : now;
@@ -122,6 +137,7 @@ export class SmtcWatcher {
   private sessions: PlayerCandidate[] = [];
   private previous = new Map<string, PlayerCandidate>();
   private stopped = false;
+  private lastLogKey = '';
 
   constructor(
     private readonly onChange: (sessions: PlayerCandidate[]) => void,
@@ -175,6 +191,19 @@ export class SmtcWatcher {
   private ingestLine(line: string): void {
     const rows = parseSmtcJsonLine(line);
     const now = Date.now();
+    const logKey = rows.map(smtcRowKey).join(';') || '(none)';
+    if (logKey !== this.lastLogKey) {
+      this.lastLogKey = logKey;
+      if (rows.length === 0) {
+        this.log('smtc: no sessions — enable foobar2000 Windows now-playing');
+      } else {
+        for (const row of rows) {
+          const app = (row.appId ?? '').slice(0, 80);
+          const title = (row.title ?? '').slice(0, 80);
+          this.log(`smtc: ${app} "${title}" status=${String(row.status ?? '')}`);
+        }
+      }
+    }
     const next = smtcSessionsToCandidates(rows, now, this.previous);
     this.previous = new Map(next.map((session) => [session.identity, session]));
     this.sessions = next;
