@@ -3,7 +3,7 @@
  * via MakeGenericMethod — PS 5.1 cannot call AsTask(IAsyncOperation) directly,
  * which left this overlay with an empty session list).
  */
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import type { PlayerCandidate } from './player-mux-logic.js';
 import { isFoobarAppId, slugIdentity } from './player-mux-logic.js';
@@ -112,7 +112,7 @@ export function smtcSessionsToCandidates(
 }
 
 export class SmtcWatcher {
-  private child: ChildProcessWithoutNullStreams | null = null;
+  private child: ChildProcess | null = null;
   private buf = '';
   private sessions: PlayerCandidate[] = [];
   private previous = new Map<string, PlayerCandidate>();

@@ -17,6 +17,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { KASHI_VERSION } from '../shared/version.js';
 import type { SourceCooldown } from './source-cooldown.js';
 
@@ -27,10 +28,18 @@ export interface TrackQuery {
   duration_ms?: number;
 }
 
+export interface LyricWord {
+  start_ms: number;
+  end_ms: number;
+  text: string;
+}
+
 export interface LyricLine {
   start_ms: number;
   end_ms: number;
   text: string;
+  /** Word timings from LRCLIB lyricsfile when hasWordSync. */
+  words?: LyricWord[];
 }
 
 export type LyricsResult =
@@ -107,11 +116,14 @@ export const MAX_RETRY_AFTER_MS = 60 * 60 * 1000;
  * (_PERMANENT_HTTP_STATUS in pipeline/lrclib.py) decides the same way. */
 const BAD_REQUEST_STATUS = new Set([400, 422]);
 
-interface LrclibRecord {
+/** Subset of the LRCLIB JSON record we read from /api/get and /api/search. */
+export interface LrclibRecord {
   id: number;
   syncedLyrics: string | null;
   duration: number | null;
   instrumental?: boolean;
+  hasWordSync?: boolean;
+  lyricsfile?: string | null;
 }
 
 /**
@@ -313,7 +325,7 @@ export class LrclibClient {
     // variant may exist.
     const exact = await this.exactGet(query, signal);
     const record = this.usable(exact, notes) ? exact : await this.search(query, signal, notes);
-    if (record?.syncedLyrics) return record;
+    if (recordHasUsableLyrics(record)) return record;
 
     // Multi-artist rung. Runs ONLY when the joined string actually splits, and
     // keeps the duration filter — so it can recover a track the conjunction
@@ -325,7 +337,7 @@ export class LrclibClient {
     const scoped = { ...query, artist: primary };
     const retry = await this.exactGet(scoped, signal);
     const rescued = this.usable(retry, notes) ? retry : await this.search(scoped, signal, notes);
-    if (rescued?.syncedLyrics) {
+    if (recordHasUsableLyrics(rescued)) {
       this.opts.log?.(`[lrclib] "${query.artist}" missed; "${primary}" hit`);
     }
     return rescued;
@@ -333,7 +345,10 @@ export class LrclibClient {
 
   /** A record whose synced lyrics the ladder may use; notes the rejects. */
   private usable(record: LrclibRecord | null, notes: LadderNotes): record is LrclibRecord {
-    if (!record?.syncedLyrics) return false;
+    if (!record) return false;
+    // Trust LRCLIB's hasWordSync flag; settle validates words after YAML parse.
+    if (record.hasWordSync && record.lyricsfile) return true;
+    if (!record.syncedLyrics) return false;
     if (isDegenerateSynced(record.syncedLyrics, record.duration)) {
       notes.rejected += 1;
       return false;
@@ -348,7 +363,7 @@ export class LrclibClient {
     record: LrclibRecord | null,
     notes: LadderNotes,
   ): Promise<LyricsResult> {
-    if (!record?.syncedLyrics) {
+    if (!recordHasUsableLyrics(record)) {
       if (notes.rejected > 0) {
         this.opts.log?.(
           `[lrclib] "${query.artist} - ${query.title}": only degenerate records (${notes.rejected}); miss not cached`,
@@ -359,15 +374,15 @@ export class LrclibClient {
       return { found: false };
     }
 
-    const lines = parseLrc(record.syncedLyrics, query.duration_ms);
+    const lines = linesFromRecord(record!, query.duration_ms);
     if (lines.length === 0) {
       await this.writeCache(key, { found: false, at: this.now(), ladder: LOOKUP_LADDER_VERSION });
       return { found: false };
     }
 
-    const recordDurationMs = record.duration == null ? null : Math.round(record.duration * 1000);
-    await this.writeCache(key, { found: true, sourceId: record.id, lines, recordDurationMs });
-    return { found: true, source: 'lrclib', sourceId: record.id, lines, recordDurationMs };
+    const recordDurationMs = record!.duration == null ? null : Math.round(record!.duration * 1000);
+    await this.writeCache(key, { found: true, sourceId: record!.id, lines, recordDurationMs });
+    return { found: true, source: 'lrclib', sourceId: record!.id, lines, recordDurationMs };
   }
 
   private async exactGet(
@@ -552,6 +567,118 @@ export function splitArtists(artist: string): string[] {
     .map((p) => p.trim())
     .filter(Boolean);
   return parts.length > 1 ? parts : [];
+}
+
+function recordHasUsableLyrics(record: LrclibRecord | null): boolean {
+  if (!record) return false;
+  if (record.syncedLyrics) return true;
+  return Boolean(record.hasWordSync && record.lyricsfile);
+}
+
+/** Prefer word-synced lyricsfile when present; otherwise LRC line stamps. */
+export function linesFromRecord(record: LrclibRecord, durationMs?: number): LyricLine[] {
+  if (record.hasWordSync && record.lyricsfile) {
+    const fromFile = parseLyricsfile(record.lyricsfile, durationMs);
+    if (fromFile && fromFile.some((line) => (line.words?.length ?? 0) > 0)) {
+      return fromFile;
+    }
+  }
+  if (record.syncedLyrics) return parseLrc(record.syncedLyrics, durationMs);
+  return [];
+}
+
+/**
+ * Parse LRCLIB lyricsfile YAML into line (+ optional word) timings.
+ * Returns null on malformed YAML / missing lines.
+ */
+export function parseLyricsfile(raw: string, durationMs?: number): LyricLine[] | null {
+  let doc: unknown;
+  try {
+    doc = parseYaml(raw);
+  } catch {
+    return null;
+  }
+  if (!doc || typeof doc !== 'object') return null;
+  const linesRaw = (doc as { lines?: unknown }).lines;
+  if (!Array.isArray(linesRaw) || linesRaw.length === 0) return null;
+
+  const stamped: Array<{
+    start_ms: number;
+    end_ms: number | null;
+    text: string;
+    words: LyricWord[] | undefined;
+  }> = [];
+
+  for (const item of linesRaw) {
+    if (!item || typeof item !== 'object') continue;
+    const line = item as {
+      text?: unknown;
+      start_ms?: unknown;
+      end_ms?: unknown;
+      words?: unknown;
+    };
+    if (typeof line.text !== 'string' || !line.text.trim()) continue;
+    if (typeof line.start_ms !== 'number' || !Number.isFinite(line.start_ms) || line.start_ms < 0) {
+      continue;
+    }
+    const start_ms = Math.round(line.start_ms);
+    const end_ms =
+      typeof line.end_ms === 'number' && Number.isFinite(line.end_ms) && line.end_ms >= start_ms
+        ? Math.round(line.end_ms)
+        : null;
+    const words = parseLyricsfileWords(line.words);
+    stamped.push({ start_ms, end_ms, text: line.text, words });
+  }
+
+  if (stamped.length === 0) return null;
+
+  return stamped.map((line, i) => {
+    const next = stamped[i + 1];
+    let end_ms =
+      line.end_ms ??
+      (next ? next.start_ms : line.start_ms + LAST_LINE_FALLBACK_MS);
+    if (!next && durationMs && durationMs > line.start_ms) {
+      end_ms = Math.min(end_ms, durationMs);
+    }
+    end_ms = Math.max(end_ms, line.start_ms);
+    const words = line.words ? fillWordEnds(line.words, end_ms) : undefined;
+    return words && words.length > 0
+      ? { start_ms: line.start_ms, end_ms, text: line.text, words }
+      : { start_ms: line.start_ms, end_ms, text: line.text };
+  });
+}
+
+function parseLyricsfileWords(raw: unknown): LyricWord[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const words: LyricWord[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const word = item as { text?: unknown; start_ms?: unknown; end_ms?: unknown };
+    if (typeof word.text !== 'string' || word.text.length === 0) continue;
+    if (typeof word.start_ms !== 'number' || !Number.isFinite(word.start_ms) || word.start_ms < 0) {
+      continue;
+    }
+    const start_ms = Math.round(word.start_ms);
+    const end_ms =
+      typeof word.end_ms === 'number' && Number.isFinite(word.end_ms) && word.end_ms >= start_ms
+        ? Math.round(word.end_ms)
+        : start_ms;
+    words.push({ start_ms, end_ms, text: word.text });
+  }
+  return words.length > 0 ? words : undefined;
+}
+
+function fillWordEnds(words: LyricWord[], lineEndMs: number): LyricWord[] {
+  return words.map((word, i) => {
+    const next = words[i + 1];
+    const end_ms =
+      word.end_ms > word.start_ms
+        ? word.end_ms
+        : next
+          ? Math.max(next.start_ms, word.start_ms)
+          : Math.max(lineEndMs, word.start_ms);
+    return { ...word, end_ms };
+  });
 }
 
 /**

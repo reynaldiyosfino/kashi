@@ -699,12 +699,26 @@ export function romanizeLine(text: string): string {
   return romanizeLineLocal(text);
 }
 
+function isCleanRomaji(s: string): boolean {
+  return Boolean(s) && !hasHan(s) && !hasKana(s) && !hasHangul(s);
+}
+
+/** JP lyric that benefits from a morphological dictionary (any kana line). */
+function wantsKuroshiro(text: string): boolean {
+  return hasKana(text);
+}
+
+export type RomajiSource = 'unison' | 'kuroshiro' | 'local' | 'none';
+
 export interface RomanizeLinesOptions {
   fetchFn?: UnisonFetch;
   unisonUrl?: string;
   signal?: AbortSignal;
   /** Injected Unison results (tests). */
   unisonRomanizations?: string[] | null;
+  /** Offline JP converter; defaults to kuroshiro when omitted. */
+  kuroshiroFn?: (text: string) => Promise<string>;
+  log?: (message: string) => void;
 }
 
 export async function romanizeLines<T extends { text: string }>(
@@ -724,12 +738,53 @@ export async function romanizeLines<T extends { text: string }>(
     });
   }
 
-  return lines.map((line, i) => {
+  let kuroshiroFn = opts.kuroshiroFn;
+  if (!kuroshiroFn && texts.some((t) => wantsKuroshiro(t) || hasKana(t))) {
+    const { romanizeWithKuroshiro } = await import('./kuroshiro-romanize.js');
+    kuroshiroFn = romanizeWithKuroshiro;
+  }
+
+  const sources: RomajiSource[] = [];
+  const out: T[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
     const fromUnison = unison?.[i]?.trim() ?? '';
-    if (fromUnison && !hasHan(fromUnison) && !hasKana(fromUnison) && !hasHangul(fromUnison)) {
-      return { ...line, romaji: fromUnison };
+    if (isCleanRomaji(fromUnison)) {
+      sources.push('unison');
+      out.push({ ...line, romaji: fromUnison });
+      continue;
     }
-    const local = romanizeLineLocal(line.text);
-    return local ? { ...line, romaji: local } : { ...line };
-  });
+
+    const text = line.text;
+    if (wantsKuroshiro(text)) {
+      const fromKuro = kuroshiroFn ? (await kuroshiroFn(text)).trim() : '';
+      if (isCleanRomaji(fromKuro)) {
+        sources.push('kuroshiro');
+        out.push({ ...line, romaji: fromKuro });
+        continue;
+      }
+    }
+
+    const local = romanizeLineLocal(text);
+    if (local) {
+      sources.push('local');
+      out.push({ ...line, romaji: local });
+    } else {
+      sources.push('none');
+      out.push({ ...line });
+    }
+  }
+
+  if (opts.log && sources.length > 0) {
+    const primary =
+      sources.includes('unison')
+        ? 'unison'
+        : sources.includes('kuroshiro')
+          ? 'kuroshiro'
+          : sources.includes('local')
+            ? 'local'
+            : 'none';
+    opts.log(`romaji via ${primary}`);
+  }
+  return out;
 }

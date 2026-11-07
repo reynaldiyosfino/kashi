@@ -16,6 +16,11 @@ extraResources:
     to: tray.png
   - from: scripts/smtc-watch.ps1
     to: smtc-watch.ps1
+  # kuromoji dict for offline kuroshiro romaji (fs cannot read .dat.gz inside asar).
+  - from: node_modules/kuromoji/dict
+    to: kuromoji-dict
+asarUnpack:
+  - "**/node_modules/kuromoji/dict/**"
 asar: true
 npmRebuild: false # no native deps (ws runs pure-JS; bufferutil not installed)
 publish: null # CI attaches artifacts to the GitHub release itself

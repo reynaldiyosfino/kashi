@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SourceCooldown } from './source-cooldown.js';
-import { LRCLIB_APP_ID, LrclibClient, LrclibUnavailableError, MAX_RETRY_AFTER_MS, normalizeArtist, parseLrc, parseRetryAfter,
-  isDegenerateLines, isDegenerateSynced, splitArtists,
+import { LRCLIB_APP_ID, LrclibClient, LrclibUnavailableError, MAX_RETRY_AFTER_MS, normalizeArtist, parseLrc, parseLyricsfile, parseRetryAfter,
+  isDegenerateLines, isDegenerateSynced, linesFromRecord, splitArtists,
 } from './lrclib.js';
 
 const LRC = '[00:12.34] First line\n[00:15.20] Second line\n';
@@ -702,5 +702,95 @@ describe('Lrclib-App-Id', () => {
     const client = new LrclibClient({ cacheDir: dir, fetchFn });
     await expect(client.getLyrics(query)).rejects.toBeInstanceOf(LrclibUnavailableError);
     expect(calls).toHaveLength(1);
+  });
+});
+
+describe('parseLyricsfile word sync', () => {
+  const WORD_YAML = `version: '1.0'
+metadata:
+  title: Example
+  artist: Artist
+lines:
+  - text: Hello world
+    start_ms: 1200
+    end_ms: 2800
+    words:
+      - text: 'Hello '
+        start_ms: 1200
+        end_ms: 1900
+      - text: world
+        start_ms: 1900
+        end_ms: 2800
+  - text: Second line
+    start_ms: 3000
+    words:
+      - text: Second
+        start_ms: 3000
+      - text: ' line'
+        start_ms: 3500
+`;
+
+  it('maps lines[].words into LyricLine.words', () => {
+    const lines = parseLyricsfile(WORD_YAML, 10_000);
+    expect(lines).not.toBeNull();
+    expect(lines![0]?.words).toEqual([
+      { start_ms: 1200, end_ms: 1900, text: 'Hello ' },
+      { start_ms: 1900, end_ms: 2800, text: 'world' },
+    ]);
+    expect(lines![1]?.words?.[0]?.text).toBe('Second');
+    expect(lines![1]?.words?.[0]?.end_ms).toBe(3500);
+    expect(lines![1]?.words?.[1]?.end_ms).toBe(lines![1]?.end_ms);
+  });
+
+  it('linesFromRecord prefers word-sync lyricsfile over LRC', () => {
+    const lines = linesFromRecord(
+      {
+        id: 1,
+        syncedLyrics: '[00:00.00] Plain only\n[00:05.00] No words here',
+        duration: 10,
+        hasWordSync: true,
+        lyricsfile: WORD_YAML,
+      },
+      10_000,
+    );
+    expect(lines[0]?.words?.length).toBe(2);
+    expect(lines[0]?.text).toBe('Hello world');
+  });
+
+  it('getLyrics returns words when hasWordSync is set', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'kashi-lrclib-ws-'));
+    try {
+      const body = {
+        id: 42,
+        syncedLyrics: SONG_LRC,
+        duration: 300,
+        hasWordSync: true,
+        lyricsfile: `version: '1.0'
+lines:
+${Array.from({ length: 8 }, (_, i) => {
+  const start = (10 + i * 5) * 1000;
+  return `  - text: line ${i} of the song goes here
+    start_ms: ${start}
+    words:
+      - text: line
+        start_ms: ${start}
+      - text: ' ${i}'
+        start_ms: ${start + 200}`;
+}).join('\n')}
+`,
+      };
+      const { fetchFn } = makeFetch(() => jsonResponse(200, body));
+      const client = new LrclibClient({ cacheDir: dir, fetchFn });
+      const result = await client.getLyrics({
+        title: 'Song',
+        artist: 'Artist',
+        duration_ms: 300_000,
+      });
+      expect(result.found).toBe(true);
+      if (!result.found) return;
+      expect(result.lines[0]?.words?.length).toBeGreaterThan(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

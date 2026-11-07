@@ -20,7 +20,11 @@
   },
   "dependencies": {
     "@kashi/protocol": "workspace:*",
-    "ws": "8.21.0"
+    "kuromoji": "0.1.2",
+    "kuroshiro": "^1.2.1",
+    "kuroshiro-analyzer-kuromoji": "^1.1.0",
+    "ws": "8.21.0",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@kashi/schemas": "workspace:*",

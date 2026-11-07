@@ -1265,6 +1265,7 @@ function buildServerConnections(): void {
       const key = typeof payload['key'] === 'string' ? payload['key'] : '';
       void romanizeLines(typed, {
         fetchFn: net.fetch.bind(net) as UnisonFetch,
+        log: (message) => console.log(`[romanize] ${message}`),
       }).then((romanized) => {
         if (key && latch.currentTrackKey !== key) return;
         send('kashi:lyrics', { ...payload, lines: romanized });
