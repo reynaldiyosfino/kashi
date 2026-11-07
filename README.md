@@ -60,9 +60,11 @@ Japanese / Korean / Chinese lines also show **romaji / RR / pinyin** underneath.
   the playhead. Enable foobar2000’s Windows media integration so SMTC publishes
   the current track. **Server settings stay empty** (serverless → lrclib.net).
   Do not save the dialog placeholders (`kashi.example.com`, `lrclib.lan`).
-  If the box still says **Waiting for foobar2000**, pin tray Source →
-  foobar2000, play a track (not just open the player), and turn on Windows
-  now-playing in foobar Preferences.
+  If the box still says **Waiting for foobar2000**, quit the old portable exe
+  and run a build that includes `smtc-watch.ps1` (Windows PowerShell 5.1 cannot
+  call WinRT `AsTask` inline). Pin tray Source → foobar2000, play a track, and
+  keep Windows now-playing on. Optional Beefweb on `127.0.0.1:8880` if the
+  playhead stays at 0.
 
 ## 🏗 How it works
 

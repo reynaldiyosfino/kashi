@@ -1380,10 +1380,16 @@ app.whenReady().then(async () => {
   };
   tray = createTray(menuOptions);
 
-  smtcWatcher = new SmtcWatcher((sessions) => {
-    smtcSessions = sessions;
-    syncMux();
-  }, makeLogger('smtc'));
+  smtcWatcher = new SmtcWatcher(
+    (sessions) => {
+      smtcSessions = sessions;
+      syncMux();
+    },
+    makeLogger('smtc'),
+    app.isPackaged
+      ? join(process.resourcesPath, 'smtc-watch.ps1')
+      : join(__dirname, '../../scripts/smtc-watch.ps1'),
+  );
   smtcWatcher.start();
   beefwebClient = new BeefwebClient(
     net.fetch.bind(net) as typeof fetch,

@@ -14,6 +14,8 @@ extraResources:
   # ?asset import only resolves when running from the repo (see tray.ts NOTE).
   - from: resources/tray.png
     to: tray.png
+  - from: scripts/smtc-watch.ps1
+    to: smtc-watch.ps1
 asar: true
 npmRebuild: false # no native deps (ws runs pure-JS; bufferutil not installed)
 publish: null # CI attaches artifacts to the GitHub release itself

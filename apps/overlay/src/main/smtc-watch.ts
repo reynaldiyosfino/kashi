@@ -1,8 +1,10 @@
 /**
- * Windows SMTC session poller. Spawns a persistent PowerShell helper that
- * prints one JSON array per tick; parsed into PlayerCandidate snapshots.
+ * Windows SMTC session poller. Spawns scripts/smtc-watch.ps1 (WinRT AsTask
+ * via MakeGenericMethod — PS 5.1 cannot call AsTask(IAsyncOperation) directly,
+ * which left this overlay with an empty session list).
  */
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import type { PlayerCandidate } from './player-mux-logic.js';
 import { isFoobarAppId, slugIdentity } from './player-mux-logic.js';
 
@@ -15,58 +17,6 @@ export interface SmtcSessionRaw {
   positionMs?: number;
   durationMs?: number;
 }
-
-const PS_SCRIPT = `
-$ErrorActionPreference = 'SilentlyContinue'
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-Add-Type -AssemblyName System.Runtime.WindowsRuntime | Out-Null
-$null = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]
-function Await-Op($op) {
-  if ($null -eq $op) { return $null }
-  $asTask = [System.WindowsRuntimeSystemExtensions]::AsTask($op)
-  $null = $asTask.Wait(1500)
-  if ($asTask.IsCompleted) { return $asTask.Result }
-  return $null
-}
-while ($true) {
-  try {
-    $mgr = Await-Op ([Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager]::RequestAsync())
-    $rows = @()
-    if ($mgr) {
-      foreach ($s in $mgr.GetSessions()) {
-        $info = Await-Op ($s.TryGetMediaPropertiesAsync())
-        $tl = $s.GetTimelineProperties()
-        $pb = $s.GetPlaybackInfo()
-        $status = ''
-        if ($pb) { $status = [string]$pb.PlaybackStatus }
-        $pos = 0; $dur = 0
-        if ($tl) {
-          $pos = [int]$tl.Position.TotalMilliseconds
-          $dur = [int]$tl.EndTime.TotalMilliseconds
-        }
-        $rows += [pscustomobject]@{
-          appId = [string]$s.SourceAppUserModelId
-          title = [string]$(if ($info) { $info.Title } else { '' })
-          artist = [string]$(if ($info) { $info.Artist } else { '' })
-          album = [string]$(if ($info) { $info.AlbumTitle } else { '' })
-          status = $status
-          positionMs = $pos
-          durationMs = $dur
-        }
-      }
-    }
-    $json = @($rows) | ConvertTo-Json -Compress -Depth 4
-    if (-not $json) { $json = '[]' }
-    if ($json.StartsWith('{')) { $json = '[' + $json + ']' }
-    [Console]::Out.WriteLine($json)
-    [Console]::Out.Flush()
-  } catch {
-    [Console]::Out.WriteLine('[]')
-    [Console]::Out.Flush()
-  }
-  Start-Sleep -Milliseconds 400
-}
-`;
 
 /**
  * WinRT PlaybackStatus: Closed=0 Opened=1 Changing=2 Stopped=3 Playing=4
@@ -142,15 +92,20 @@ export class SmtcWatcher {
   constructor(
     private readonly onChange: (sessions: PlayerCandidate[]) => void,
     private readonly log: (line: string) => void = () => {},
+    private readonly scriptPath: string = '',
   ) {}
 
   start(): void {
     if (process.platform !== 'win32') return;
     if (this.child) return;
     this.stopped = false;
+    if (!this.scriptPath || !existsSync(this.scriptPath)) {
+      this.log(`smtc helper missing: ${this.scriptPath || '(no path)'}`);
+      return;
+    }
     const child = spawn(
       'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', PS_SCRIPT],
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', this.scriptPath],
       { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
     );
     this.child = child;
